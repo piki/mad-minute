@@ -1,0 +1,100 @@
+#!/usr/bin/ruby
+
+DATAFILE = "mad-minute.dat"
+ARANGE = (0..9)
+BRANGE = (0..5)
+CONGRATS = ["Correct!", "Yup.", "That's right. :)", "Woohoo!", "Keep it up!" ]
+GREEN = "\x1b[32m"
+RED = "\x1b[31m"
+CYAN = "\x1b[36m"
+RESET = "\x1b[0m"
+INTERVAL = 60  # seconds
+
+def init
+  @history = begin
+    Marshal.load(File.read(DATAFILE))
+  rescue Errno::ENOENT
+    {}
+  end
+end
+
+def run
+  end_time = Time.now + INTERVAL
+  timed_right = timed_wrong = streak = 0
+  while true
+    a, b = make_question
+    while true
+      print "#{a} * #{b} = "; $stdout.flush
+      response = $stdin.readline
+      break if response =~ /^\d+$/
+      puts "That's not even a number :( :( :("
+    end
+    tuple = @history[[a, b].sort] ||= [0, 0]
+    if a * b == response.to_i
+      tuple[0] += 1
+      timed_right += 1
+      streak += 1
+      puts GREEN + CONGRATS.sample + RESET
+    else
+      timed_wrong += 1
+      tuple[1] += 1
+      streak = 0
+      puts RED + "No, sorry, the answer is #{a * b}" + RESET
+    end
+
+    if Time.now >= end_time
+      puts CYAN + "Your #{INTERVAL} seconds are up!  You got #{timed_right} right and #{timed_wrong} wrong."
+      if streak > 3
+        puts "You've gotten #{streak} right in a row!"
+      end
+      timed_right = timed_wrong = 0
+      puts RESET + "Press Enter to start another quiz."
+      $stdin.readline
+      end_time = Time.now + INTERVAL
+    end
+  end
+rescue EOFError, Interrupt
+end
+
+def done
+  File.write(DATAFILE, Marshal.dump(@history))
+end
+
+def make_question
+  total_weight = 0
+  choice = nil
+  ARANGE.each do |a|
+    BRANGE.each do |b|
+      tuple = @history[[a,b].sort]
+      weight = get_weight(tuple)
+      total_weight += weight.to_f
+      if rand <= weight / total_weight
+        choice = [a, b]
+      end
+    end
+  end
+  choice.shuffle
+end
+
+def get_weight(tuple)
+  case
+    when tuple.nil? || tuple[0] + tuple[1] < 3
+      3
+    when tuple[0] == 0  # >= 3 wrong, none right
+      tuple[1]
+    else                # >= 3 total, >= 1 right
+      (tuple[0] + tuple[1]).to_f / tuple[0]
+  end
+end
+
+def dump_history
+  @history.each do |ab, rw|
+    next if rw[0] >= 3 && rw[1] == 0
+    puts "#{ab[0]} * #{ab[1]} ... #{rw[0]}/#{rw[0]+rw[1]} (#{100*rw[0]/(rw[0]+rw[1])}%), weight=#{get_weight(rw)}"
+  end
+end
+
+init
+#dump_history
+run
+done
